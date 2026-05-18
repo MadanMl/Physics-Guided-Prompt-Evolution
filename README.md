@@ -75,7 +75,7 @@ accuracy**, assessed by McNemar's test on 5,000 paired test predictions.
 | Dataset | Baseline (dist.) | FT-Baseline (dist.) | ICOP-Add (dist.) | Δ | p-value |
 |---|---|---|---|---|---|
 | MNIST | 9.5% | 95.5% | 97.9% | **+2.4 pp** | < 0.001 |
-| FashionMNIST | 46.2% | 76.2% | 85.3% | **+9.2 pp** | < 0.001 |
+| FashionMNIST | 46.2% | 76.2% | 85.3% | **+9.1 pp** | < 0.001 |
 | CIFAR-10 | 22.7% | 46.8% | 57.5% | **+10.7 pp** | < 0.001 |
 
 Evaluation: σ = 1.5, vignette strength s = 0.4. Both ICOP-Add and
