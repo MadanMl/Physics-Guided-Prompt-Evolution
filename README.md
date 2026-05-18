@@ -6,7 +6,7 @@ and object detection.
 
 > Madan M., Reich C., Becker B., Azarhoushang B.  
 > *Physics-Guided Prompt Evolution for Optically Robust Image Classification and Object Detection*  
-> Electronics (MDPI), 2025
+> Electronics (MDPI), 2026
 
 ---
 
@@ -165,7 +165,7 @@ Phase 4  →  Freeze backbone; unfreeze head + E + G
              Image Classification and Object Detection},
   journal = {Electronics},
   publisher = {MDPI},
-  year    = {2025}
+  year    = {2026}
 }
 ```
 
