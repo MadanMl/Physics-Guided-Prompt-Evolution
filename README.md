@@ -49,8 +49,7 @@ Two task-specific instantiations:
 This repository currently contains the **image classification
 instantiation (ICOP-Add)** as a self-contained Jupyter notebook. The
 object detection code (ICOP-FiLM) is not publicly released; the
-pseudocode for the full detection pipeline is provided at the bottom of
-this README.
+pseudocode for the full detection pipeline is provided in paper.
 
 ---
 
