@@ -1,11 +1,11 @@
-# Physics-Guided Prompt Evolution (ICOP)
+# Physics-Guided Prompt Adaptation (ICOP)
 
 **Iterative Correction of Optical Perturbations** — a physics-guided
-prompt evolution framework for optically robust image classification
+prompt adaptation framework for optically robust image classification
 and object detection.
 
 > Madan M., Reich C., Becker B., Azarhoushang B.  
-> *Physics-Guided Prompt Evolution for Optically Robust Image Classification and Object Detection*  
+> *Physics-Guided Prompt Adaptation for Optically Robust Image Classification and Object Detection*  
 > Electronics (MDPI), 2026
 
 ---
@@ -182,138 +182,7 @@ The object detection instantiation (**ICOP-FiLM**) is not publicly
 released at this time. It applies a Feature-wise Linear Modulation
 (FiLM) correction to the encoder output of RT-DETR via a forward hook,
 adding only 82,672 parameters to the 42-million-parameter detector.
-
-The complete training procedure is described by the pseudocode below.
-Results on three datasets (Al-Cast, Grinding Wheel, Aquarium) are
-reported in the paper.
-
----
-
-### ICOP-FiLM: Object Detection Pseudocode
-
-```
-Algorithm: Object Detection (ICOP-FiLM)
-────────────────────────────────────────────────────────────────────
-
-Input:
-  D           — clean training dataset
-  σ ~ U(0.7, 1.3)   — multi-sigma blur sampling
-  m = 0.5     — contrastive margin
-  T = 600     — evolution iterations
-  E = 30      — fine-tuning epochs
-
-────────────────────────────────────────────────────────────────────
-PHASE 1: Pretraining
-────────────────────────────────────────────────────────────────────
-
-  Initialise RT-DETR from COCO/Objects365 pre-trained weights
-  Train (φ_bb, φ_enc, φ_dec) on clean D for 50 epochs
-  Save base model M*
-  [M* is reused by all three evaluation models]
-
-────────────────────────────────────────────────────────────────────
-PHASE 2: FT-Baseline  (null hypothesis)
-────────────────────────────────────────────────────────────────────
-
-  M_ft ← deepcopy(M*)
-  Freeze φ_bb, φ_enc  in M_ft
-  Fine-tune φ_dec only on mixed data for E epochs
-  Evaluate → FT-Baseline mAP
-
-────────────────────────────────────────────────────────────────────
-PHASE 3: Evolution
-────────────────────────────────────────────────────────────────────
-
-  Attach BlurEstimator E and PromptGenerator G
-    (zero-init γ and β output heads) directly to M*
-    forming M_icop  [wraps M* in-place; no deepcopy]
-
-  Register FiLM forward hook on φ_enc
-  Disable hook  (γ ← None)
-  Freeze φ_bb, φ_enc, φ_dec
-
-  for t = 1 to T:
-
-    Sample clean batch x
-    σ_t ~ U(0.7, 1.3)
-    x̃ ← g_{σ_t} * x                      [blur + vignette, on-the-fly]
-
-    f_c ← MeanPool(φ_enc(x))              [no gradient; hook disabled]
-    f_b ← MeanPool(φ_enc(x̃))
-
-    γ_b, β_b ← G(E(x̃))
-    f̂_b ← f_b · (1 + γ_b) + β_b         [FiLM on pooled vector]
-
-    γ_c, β_c ← G(E(x))
-    p_clean ← concat(γ_c, β_c)
-    p_blur  ← concat(γ_b, β_b)
-
-    L = 10·MSE(f_c, f̂_b)                 [L_corr: feature alignment]
-      + 5·(1 − cos(f_c, f̂_b))            [L_cos:  angular alignment]
-      + 2·MSE(‖f̂_b‖, ‖f_c‖)             [L_mag:  norm matching]
-      + 5·mean(p_clean²)                  [L_sup:  suppress on clean]
-      + 10·ReLU(‖p_clean‖ − ‖p_blur‖ + m) [L_margin: contrastive]
-
-    Update (E, G) via Adam
-      lr = 5×10⁻⁴, cosine annealing, gradient clip 1.0
-    Save best (E, G) by L
-
-  Restore best (E*, G*)
-  Unfreeze all parameters
-
-────────────────────────────────────────────────────────────────────
-PHASE 4: Fine-Tuning
-────────────────────────────────────────────────────────────────────
-
-  Freeze φ_bb, φ_enc
-  Unfreeze φ_dec, E, G
-  Re-enable FiLM hook  [now applied to full (B, S, C) encoder maps]
-
-  lr_dec  = 5×10⁻⁵
-  lr_ICOP = 1×10⁻⁴
-  Scheduler: OneCycleLR
-  Gradient accumulation: 4 steps
-
-  for e = 1 to E:
-
-    Sample mixed batch (50% blurry with jittered σ; 50% clean)
-
-    Forward pass:
-      FiLM hook applies  f̂ = f · (1 + γ) + β  to full encoder output
-
-    Update (φ_dec, E, G) via detection loss
-      [classification focal loss + L1 box regression + GIoU loss]
-
-    Evaluate val dist-mAP every 5 epochs
-    Checkpoint by best dist-mAP
-
-  Return best (φ_dec, E*, G*)
-
-────────────────────────────────────────────────────────────────────
-Architecture notes
-────────────────────────────────────────────────────────────────────
-
-  BlurEstimator (shared with ICOP-Add):
-    Physics branch : Laplacian variance + Sobel gradient variance → R²
-    CNN branch     : 3-layer CNN (16ch, BatchNorm, ReLU, stride-2) → R¹⁶
-    Fusion         : Linear(18 → 32) + LayerNorm + ReLU
-    Total params   : 14,688
-
-  PromptGenerator (ICOP-FiLM):
-    Trunk  : Linear(32→64) → GELU → LayerNorm
-             Linear(64→128) → GELU → LayerNorm
-    Heads  : Linear(128→256) for γ  [zero-init]
-             Linear(128→256) for β  [zero-init]
-    Total  : 67,984
-
-  ICOP-FiLM total added parameters: 82,672  (<0.2% of 42M RT-DETR)
-
-  Why mean-pool during evolution:
-    Computing L_corr on full spatial maps (B, 900, 256) produces
-    gradients ~900× larger than on pooled vectors, causing instability.
-    Mean-pooling during evolution stabilises training.
-    The full spatial FiLM correction is applied at inference.
-```
+The complete training procedure is described in the paper.
 
 ---
 
